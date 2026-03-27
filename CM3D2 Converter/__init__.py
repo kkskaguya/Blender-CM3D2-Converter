@@ -3,9 +3,9 @@
 # アドオン情報
 bl_info = {
     "name": "CM3D2 Converter",
-    "author": "@saidenka_cm3d2, @trzrz, @luvoid",
-    "version": ("luv", 2024, 3, 24),
-    "blender": (3, 3, 0),
+    "author": "@saidenka_cm3d2, @trzrz, @luvoid，@kkskaguya",
+    "version": ("v1.0", 2026, 3, 27),
+    "blender": (4, 0, 0),
     "location": "ファイル > インポート/エクスポート > CM3D2 Model (.model)",
     "description": "Blender 4.x/5.x 対応版：カスタムメイド3D2/カスタムオーダーメイド3D2専用ファイルのインポート/エクスポートを行います",
     "warning": "",

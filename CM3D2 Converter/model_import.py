@@ -1,3 +1,9 @@
+# NOTICE: This file has been modified from the original.
+# Modified by kkskakuya
+# Changes: Fixed compatibility with Blender 4.0+ API:
+#   - arm.show_group_colors removed in Blender 4.0+ (line ~381)
+#   - arm.layers removed in Blender 4.0+ (line ~648)
+#   - bpy.ops context override dict replaced with temp_override (line ~692)
 import os
 import math
 import struct
@@ -377,7 +383,8 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
             arm.show_names              = prefs.show_bone_names        
             arm.show_axes               = prefs.show_bone_axes         
             arm.show_bone_custom_shapes = prefs.show_bone_custom_shapes
-            arm.show_group_colors       = prefs.show_bone_group_colors
+            if bpy.app.version < (4, 0):
+                arm.show_group_colors   = prefs.show_bone_group_colors
             if compat.IS_LEGACY:
                 arm_ob.show_x_ray = prefs.show_bone_in_front
             else:
@@ -644,7 +651,8 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
                     else:
                         arm.edit_bones.remove(bone)
 
-            arm.layers[16] = True
+            if bpy.app.version < (4, 0):
+                arm.layers[16] = True
             compat.set_display_type(arm, prefs.bone_display_type)
             bpy.ops.armature.select_all(action='DESELECT')
             bpy.ops.object.mode_set(mode='OBJECT')
@@ -687,7 +695,11 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
                 
                 mates_set.add(data.name)
                 #common.preferences().mate_unread_same_value
-                bpy.ops.object.material_slot_add(override)
+                if compat.BLENDER_4_0:
+                    with bpy.context.temp_override(**override):
+                        bpy.ops.object.material_slot_add()
+                else:
+                    bpy.ops.object.material_slot_add(override)
                 mate = context.blend_data.materials.new(data.name)#['name1'])
                 #mate['shader1'] = data['name2']
                 #mate['shader2'] = data['name3']
@@ -942,7 +954,7 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
                 for vert in vertex_data
             )
         )
-        me.use_auto_smooth = True
+        compat.set_auto_smooth(ob)
 
         return ob, me
 
@@ -1029,10 +1041,7 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
             #    bpy.ops.geometry.color_attribute_add(name=name, domain='CORNER', data_type='FLOAT_COLOR', color=default_color)
             #    return me.attributes.active
             
-            if is_use_attributes:
-                normals_color = me.attributes.new(name, 'FLOAT_COLOR', 'CORNER')
-            else:
-                normals_color = me.vertex_colors.new(name=name, do_init=False) or me.vertex_colors[-1]
+            normals_color = compat.new_color_attribute(me, name, 'CORNER', 'FLOAT_COLOR')
 
             fill_color_layer(normals_color, default_color)
             
@@ -1041,10 +1050,7 @@ class CNV_OT_import_cm3d2_model(bpy.types.Operator, bpy_extras.io_utils.ImportHe
         def create_unknown_color(data):
             unknown_color = None
             if len(data['data']) and data['data'][0]['color']:
-                if is_use_attributes:
-                    unknown_color = me.attributes.new(f"{data['name']}_unknown", 'FLOAT_COLOR', 'CORNER')
-                else:
-                    unknown_color = me.vertex_colors.new(name=f"{data['name']}_unknown", do_init=False) or me.vertex_colors[-1]
+                unknown_color = compat.new_color_attribute(me, f"{data['name']}_unknown", 'CORNER', 'FLOAT_COLOR')
             return unknown_color
 
         def set_shape_key_data(shape_key, normals_color, unknown_color):

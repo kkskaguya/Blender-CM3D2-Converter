@@ -1054,7 +1054,9 @@ def align_nodes(mate):
             mate.node_tree.links.new(bsdf.inputs['Alpha'], main_tex.outputs['Alpha'])
         shininess = nodes.get('_Shininess')
         if shininess:
-            mate.node_tree.links.new(bsdf.inputs['Specular'], shininess.outputs[0])
+            specular_input = bsdf.inputs.get('Specular') or bsdf.inputs.get('Specular IOR Level')
+            if specular_input:
+                mate.node_tree.links.new(specular_input, shininess.outputs[0])
         base_location = bsdf.location
 
     shader_name = mate.get('shader1')

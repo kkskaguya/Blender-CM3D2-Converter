@@ -1,3 +1,7 @@
+# NOTICE: This file has been modified from the original.
+# Modified by kkskakuya
+# Changes: Fixed compatibility with Blender 4.0+ API:
+#   - material_restore class: replaced bpy.ops(override) with temp_override
 import os
 import re
 import math
@@ -946,8 +950,6 @@ def remove_data(target_data):
 # オブジェクトのマテリアルを削除/復元するクラス
 class material_restore:
     def __init__(self, ob):
-        override = bpy.context.copy()
-        override['object'] = ob
         self.object = ob
 
         self.slots = [slot.material if slot.material else None for slot in ob.material_slots]
@@ -961,17 +963,32 @@ class material_restore:
             self.mesh_data.append(mesh_datum)
 
         for slot in ob.material_slots[:]:
-            bpy.ops.object.material_slot_remove(override)
+            if compat.BLENDER_4_0:
+                with bpy.context.temp_override(object=ob):
+                    bpy.ops.object.material_slot_remove()
+            else:
+                override = bpy.context.copy()
+                override['object'] = ob
+                bpy.ops.object.material_slot_remove(override)
 
     def restore(self):
-        override = bpy.context.copy()
-        override['object'] = self.object
-
         for slot in self.object.material_slots[:]:
-            bpy.ops.object.material_slot_remove(override)
+            if compat.BLENDER_4_0:
+                with bpy.context.temp_override(object=self.object):
+                    bpy.ops.object.material_slot_remove()
+            else:
+                override = bpy.context.copy()
+                override['object'] = self.object
+                bpy.ops.object.material_slot_remove(override)
 
         for index, mate in enumerate(self.slots):
-            bpy.ops.object.material_slot_add(override)
+            if compat.BLENDER_4_0:
+                with bpy.context.temp_override(object=self.object):
+                    bpy.ops.object.material_slot_add()
+            else:
+                override = bpy.context.copy()
+                override['object'] = self.object
+                bpy.ops.object.material_slot_add(override)
             slot = self.object.material_slots[index]
             if slot:
                 slot.material = mate

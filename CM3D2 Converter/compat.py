@@ -1,3 +1,8 @@
+# NOTICE: This file has been modified from the original.
+# Modified by kkskakuya
+# Changes: Fixed compatibility with Blender 4.1+ API:
+#   - set_auto_smooth: replaced SMOOTH_BY_ANGLE modifier (not a valid type)
+#     with bpy.ops.object.shade_smooth_by_angle() operator
 # -*- coding: utf-8 -*-
 import bpy
 import bpy_extras
@@ -15,6 +20,10 @@ import functools
 
 # LEGAY: version less than 2.80
 IS_LEGACY = not hasattr(bpy.app, 'version') or bpy.app.version < (2, 80)
+
+# Blender 4.0+
+BLENDER_4_0 = not IS_LEGACY and bpy.app.version >= (4, 0, 0)
+BLENDER_4_1 = not IS_LEGACY and bpy.app.version >= (4, 1, 0)
 
 UILayoutDrawer = bpy.types.Header | bpy.types.Menu | bpy.types.Panel
 
@@ -168,64 +177,6 @@ def make_annotations(cls):
         make_annotations(bc)
 
     return cls
-
-
-import functools
-import inspect
-import warnings
-
-string_types = (type(b''), type(u''))
-
-
-def deprecated(target_or_reason: str | type | FunctionType):
-    """This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used.
-    
-    The ``@deprecated`` decorator is used either with a reason...
-    ```
-    @deprecated("please, use another function")
-    def old_function(x, y):
-        pass
-    ```
-    ...or without a reason
-    ```
-    @deprecated
-    def old_function(x, y):
-        pass
-    ```
-    """
-    target = None
-    reason = None
-    if isinstance(target_or_reason, str):
-        reason = target_or_reason
-    elif inspect.isclass(target_or_reason) or inspect.isfunction(target_or_reason):
-        target = target_or_reason
-    else:
-        raise TypeError(repr(type(target_or_reason)))
-        
-    def decorator(func):
-        if inspect.isclass(func):
-            msg = f"Call to deprecated class {func.__name__}."
-        else:
-            msg = f"Call to deprecated function {func.__name__}."
-        if reason is not None:
-            msg += f" {reason}"
-        @functools.wraps(func)
-        def func_wrapper(*args, **kwargs):
-            warnings.simplefilter('always', DeprecationWarning)
-            warnings.warn(msg, category=DeprecationWarning, stacklevel=2)
-            warnings.simplefilter('default', DeprecationWarning)
-            return func(*args, **kwargs)
-        return func_wrapper
-    
-    if reason is not None:
-        return decorator
-    elif target is not None:
-        return decorator(target)
-    else:
-        raise TypeError(repr(type(target_or_reason)))
-
 
 
 def layout_split(layout, factor=0.0, align=False):
@@ -807,3 +758,56 @@ def unit(key):
     elif bpy.app.version < (2, 91):
         return BL29_TO_BL28_UNIT.get(key, key) or 'NONE'
     return key
+
+
+def get_color_attributes(mesh):
+    if BLENDER_4_0:
+        return mesh.color_attributes
+    if hasattr(mesh, 'vertex_colors'):
+        return mesh.vertex_colors
+    return None
+
+
+def new_color_attribute(mesh, name, domain='CORNER', data_type='FLOAT_COLOR'):
+    if BLENDER_4_0:
+        return mesh.color_attributes.new(name=name, domain=domain, type=data_type)
+    if hasattr(mesh, 'attributes'):
+        return mesh.attributes.new(name=name, type=data_type, domain=domain)
+    if hasattr(mesh, 'vertex_colors'):
+        return mesh.vertex_colors.new(name=name)
+    return None
+
+
+def calc_tangents(mesh, uv_map_name=None):
+    if BLENDER_4_0:
+        mesh.calc_tangents()
+    else:
+        mesh.calc_tangents(uvmap=uv_map_name)
+
+
+def set_auto_smooth(mesh_or_obj, use_auto_smooth=True, angle=0.523599):
+    if BLENDER_4_1:
+        # In 4.1+, use_auto_smooth and SMOOTH_BY_ANGLE modifier type are removed.
+        # Use the shade_smooth_by_angle operator instead.
+        if hasattr(mesh_or_obj, 'modifiers'):
+            # It's an Object
+            obj = mesh_or_obj
+            if use_auto_smooth:
+                saved_active = bpy.context.view_layer.objects.active
+                bpy.context.view_layer.objects.active = obj
+                try:
+                    bpy.ops.object.shade_smooth_by_angle(angle=angle)
+                except Exception:
+                    # Fallback: mark all polygons smooth
+                    for poly in obj.data.polygons:
+                        poly.use_smooth = True
+                bpy.context.view_layer.objects.active = saved_active
+        elif hasattr(mesh_or_obj, 'polygons'):
+            # It's a bare Mesh - can only mark polygons smooth
+            if use_auto_smooth:
+                for poly in mesh_or_obj.polygons:
+                    poly.use_smooth = True
+    else:
+        mesh = mesh_or_obj if hasattr(mesh_or_obj, 'polygons') else mesh_or_obj.data
+        mesh.use_auto_smooth = use_auto_smooth
+        mesh.auto_smooth_angle = angle

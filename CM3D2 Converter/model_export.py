@@ -228,19 +228,13 @@ class CNV_OT_export_cm3d2_model(bpy.types.Operator):
 
         selected_objs = context.selected_objects
         source_objs = []
-        ob_source = None
-        ob_name = None
-        prev_mode = context.active_object.mode
+        prev_mode = None
         try:
             ob_source = context.active_object
-            ob_name = ob_source.name
             if ob_source not in selected_objs:
                 selected_objs.append(ob_source) # luvoid : Fix error where object is active but not selected
+            ob_name = ob_source.name
             ob_main = None
-
-            if context.active_object.mode != 'OBJECT':
-                bpy.ops.object.mode_set(mode='OBJECT')
-
             if self.is_batch:
                 # アクティブオブジェクトを１つコピーするだけでjoinしない
                 source_objs.append(ob_source)
@@ -267,6 +261,11 @@ class CNV_OT_export_cm3d2_model(bpy.types.Operator):
 
                         selected_count += 1
 
+                mode = context.active_object.mode
+                if mode != 'OBJECT':
+                    prev_mode = mode
+                    bpy.ops.object.mode_set(mode='OBJECT')
+
                 if selected_count > 1:
                     if ob_main:
                         compat.set_active(context, ob_main)
@@ -292,8 +291,10 @@ class CNV_OT_export_cm3d2_model(bpy.types.Operator):
             for obj in source_objs:
                 compat.set_select(obj, True)
 
-            if ob_source and ob_name in bpy.data.objects:
-                compat.set_active(context, ob_source)
+            if ob_source:
+                # TODO 元のオブジェクトをアクティブに戻す
+                if ob_name in bpy.data.objects:
+                    compat.set_active(context, ob_source)
 
             if prev_mode:
                 bpy.ops.object.mode_set(mode=prev_mode)
@@ -609,7 +610,8 @@ class CNV_OT_export_cm3d2_model(bpy.types.Operator):
         # カスタム法線情報を取得
         if me.has_custom_normals:
             custom_normals = [mathutils.Vector() for i in range(len(me.vertices))]
-            me.calc_normals_split()
+            if hasattr(me, 'calc_normals_split'):
+                me.calc_normals_split()
             for loop in me.loops:
                 custom_normals[loop.vertex_index] += loop.normal
             for no in custom_normals:
@@ -695,13 +697,22 @@ class CNV_OT_export_cm3d2_model(bpy.types.Operator):
         loops_vert_index = np.empty((len(me.loops)), dtype=int)
         me.loops.foreach_get('vertex_index', loops_vert_index.ravel())
 
-        def find_normals_attribute(name) -> (bpy.types.Attribute, bool):
-            if is_use_attributes:
-                normals_color = me.attributes[name] if name in me.attributes.keys() else None
-                attribute_is_color = (not normals_color is None) and normals_color.data_type in {'BYTE_COLOR', 'FLOAT_COLOR'}
+        def find_normals_attribute(name):
+            attributes = compat.get_color_attributes(me)
+            if attributes:
+                normals_color = attributes.get(name)
             else:
-                normals_color = me.vertex_colors[name] if name in me.vertex_colors.keys() else None
-                attribute_is_color = True
+                normals_color = None
+            
+            if normals_color is None and hasattr(me, 'attributes'):
+                normals_color = me.attributes.get(name)
+
+            attribute_is_color = False
+            if normals_color:
+                if hasattr(normals_color, 'data_type'):
+                    attribute_is_color = normals_color.data_type in {'BYTE_COLOR', 'FLOAT_COLOR'}
+                else:
+                    attribute_is_color = True
             return normals_color, attribute_is_color
 
         if self.use_shapekey_colors:
